@@ -6,8 +6,26 @@ import urllib2
 import time
 import sys
 import os
-import binascii
 import base64
+
+class WindowUtil:
+
+    @staticmethod
+    def center(window):
+
+        window.update_idletasks()
+        size_x = window.winfo_width()
+        size_y = window.winfo_height()
+
+        screen_x = window.winfo_screenwidth()
+        screen_y = window.winfo_screenheight()
+
+        offset_x = (screen_x - size_x) / 2
+        offset_y = (screen_y - size_y) / 2
+
+        geometry = (size_x, size_y, offset_x, offset_y)
+
+        window.geometry('%dx%d+%d+%d' % geometry)
 
 class Config:
 
@@ -21,7 +39,7 @@ class Config:
 
 class Log:
 
-    now = time.strftime('%F %T')
+    now = time.strftime('%Y-%m-%d %H:%M:S')
 
     @staticmethod
     def info(msg):
@@ -109,8 +127,9 @@ class Action:
     def sms_conf():
 
         Log.info('ConfWindow starting')
-        conf = ConfWindow()
-        conf.title("Configure tkNexmo")
+        conf = ConfWindow(app)
+        conf.title("Configure")
+        WindowUtil.center(conf)
 
 
     @staticmethod
@@ -148,10 +167,14 @@ class Action:
         if response['messages'][0]['status'] == '0':
             msg_ok = u'SMS sent to %s.\n' % response['messages'][0]['to']
             msg_ok += u'Account balance now %s€' % response['messages'][0]['remaining-balance']
-            msg.showinfo(title="Success", message=msg_ok)
+            print msg.showinfo(title="Success", message=msg_ok)
         else:
             msg_err = 'Server response:\n%s' % str(response)
             msg.showinfo(title="Sending SMS failed", message=msg_err)
+
+        Config.contacts_dict[sms_to] = 'PLACEHOLDER'
+        Action.contacts_save()
+        app.contacts.insert(gui.END, sms_to)
 
     @staticmethod
     def sms_clear():
@@ -269,6 +292,7 @@ class MainWindow(gui.Frame):
 
         # contacts: listbox
         contacts = gui.Listbox(lf_contacts, height=12)
+        self.contacts = contacts
 
         for (name, phone) in Config.contacts_dict.items():
                 
@@ -322,12 +346,16 @@ class MainWindow(gui.Frame):
         btn_clear.pack(side=gui.LEFT, fill=gui.X, anchor=gui.S, expand=True)
         btn_quit.pack(side=gui.LEFT, fill=gui.X, anchor=gui.S, expand=True)
 
+
+# get data
 Action.credentials_load()
 Action.contacts_load()
 
+# init window
 root = gui.Tk()
 root.resizable(0, 0)
 root.title("Nexmo SMS")
 
+# run main
 app = MainWindow(root)
 app.mainloop()
