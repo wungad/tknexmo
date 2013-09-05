@@ -8,6 +8,30 @@ import sys
 import os
 import base64
 
+# check for tkinter
+try:
+    import Tkinter as gui
+    import tkMessageBox as msg
+except ImportError:
+    sys.exit('Runtime import error for Tkinter')
+
+
+# --------------------- #
+# Configuration options #
+# --------------------- #
+class Config:
+
+    credentials_file = 'credentials.db'
+    credentials_dict = {}
+
+    app_debug = True
+
+    contacts_file = 'contacts.db'
+    contacts_dict = {}
+
+# ---------------- #
+# Widget utilities #
+# ---------------- #
 class WindowUtil:
 
     @staticmethod
@@ -27,16 +51,9 @@ class WindowUtil:
 
         window.geometry('%dx%d+%d+%d' % geometry)
 
-class Config:
-
-    credentials_file = 'credentials.db'
-    credentials_dict = {}
-
-    app_debug = True
-
-    contacts_file = 'contacts.db'
-    contacts_dict = {}
-
+# ------------- #
+# Logging class #
+# ------------- #
 class Log:
 
     now = time.strftime('%Y-%m-%d %H:%M:S')
@@ -55,6 +72,9 @@ class Log:
         sys.stdout.write('[%s]: %s\n' % (Log.now, msg.strip()))
         sys.exit(1)
 
+# ------------------- #
+# Nexmo message class #
+# ------------------- #
 class Nexmo:
 
     def __init__(self, sms_from, sms_to, sms_txt):
@@ -93,6 +113,9 @@ class Nexmo:
         )
         return nexmo_response
 
+# -------------- #
+# Widget actions #
+# -------------- #
 class Action:
 
 
@@ -118,7 +141,6 @@ class Action:
             Config.credentials_dict = json.loads(base64.b64decode(
                 open(Config.credentials_file, 'r').read()
             ))
-            print 'Loaded', Config.credentials_dict
         except IOError:
             pass
 
@@ -167,19 +189,23 @@ class Action:
         if response['messages'][0]['status'] == '0':
             msg_ok = u'SMS sent to %s.\n' % response['messages'][0]['to']
             msg_ok += u'Account balance now %s€' % response['messages'][0]['remaining-balance']
-            print msg.showinfo(title="Success", message=msg_ok)
+            msg.showinfo(title="Success", message=msg_ok)
         else:
             msg_err = 'Server response:\n%s' % str(response)
             msg.showinfo(title="Sending SMS failed", message=msg_err)
 
         Config.contacts_dict[sms_to] = 'PLACEHOLDER'
         Action.contacts_save()
-        app.contacts.insert(gui.END, sms_to)
+        Action.contacts_load()
+        #app.contacts.insert(gui.END, sms_to)
 
     @staticmethod
     def sms_clear():
 
         Log.info("SMS clearing")
+        app.entry_from.delete(0, gui.END)
+        app.entry_to.delete(0, gui.END)
+        app.entry_txt.delete(0.0, gui.END)
 
     @staticmethod
     def contacts_save():
@@ -196,17 +222,41 @@ class Action:
         except IOError:
             pass
 
-# check for tkinter
-try:
-    import Tkinter as gui
-    import tkMessageBox as msg
-except ImportError:
-    Log.fatal('Runtime import error for Tkinter')
+        app.contacts.delete(0, gui.END)
+        for name, phone in Config.contacts_dict.items():
+                
+            app.contacts.insert(gui.END, name)
 
 
-#----------------------#
+    @staticmethod
+    def contacts_delete():
+
+        selected = app.contacts.curselection()
+
+        contact = app.contacts.get(selected)
+        Log.info('Deleting contact %s' % contact)
+        app.contacts.delete(selected)
+        del Config.contacts_dict[contact]
+            
+        Action.contacts_save()
+        Action.sms_clear()
+
+    @staticmethod
+    def contacts_selected(event):
+
+        selected = app.contacts.curselection()
+        if not selected:
+            return
+        contact = app.contacts.get(selected)
+
+        Log.info('Selected %s' % contact)
+        app.entry_to.delete(0, gui.END)
+        app.entry_to.insert(0, app.contacts.get(selected))
+        
+
+# -------------------- #
 # Configuration Window #
-#----------------------#
+# -------------------- #
 class ConfWindow(gui.Toplevel):
 
     def __init__(self, master=None):
@@ -275,7 +325,9 @@ class ConfWindow(gui.Toplevel):
         btn_clear.pack(side=gui.LEFT, fill=gui.X, expand=True)
         btn_close.pack(side=gui.LEFT, fill=gui.X, expand=True)
 
-
+# ----------- #
+# Main window #
+# ----------- #
 class MainWindow(gui.Frame):
 
     def __init__(self, master=None):
@@ -294,14 +346,11 @@ class MainWindow(gui.Frame):
         contacts = gui.Listbox(lf_contacts, height=12)
         self.contacts = contacts
 
-        for (name, phone) in Config.contacts_dict.items():
-                
-                contacts.insert(gui.END, name)
-
         contacts.pack(side=gui.TOP)
+        contacts.bind('<<ListboxSelect>>', Action.contacts_selected)
 
         # contacts: buttons
-        btn_del = gui.Button(lf_contacts, text="Delete")
+        btn_del = gui.Button(lf_contacts, text="Delete", command=Action.contacts_delete)
         btn_del.pack(side=gui.RIGHT, fill=gui.BOTH, expand=1)
 
         # sms: labelframe
@@ -347,15 +396,23 @@ class MainWindow(gui.Frame):
         btn_quit.pack(side=gui.LEFT, fill=gui.X, anchor=gui.S, expand=True)
 
 
-# get data
-Action.credentials_load()
-Action.contacts_load()
+# ---------- #
+# Main stuff # 
+# ---------- #
+Log.info('tkNexmo starting')
 
-# init window
+# init: screen
 root = gui.Tk()
 root.resizable(0, 0)
 root.title("Nexmo SMS")
 
-# run main
+# init: main window
 app = MainWindow(root)
+
+# init: data
+Action.credentials_load()
+Action.contacts_load()
+
+# main: run
 app.mainloop()
+Log.info("tkNexmo exiting")
