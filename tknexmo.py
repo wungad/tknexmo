@@ -94,23 +94,7 @@ class Nexmo:
     def send(self):
 
         Log.info('Sending SMS to %s...' % self.sms_to)
-        #nexmo_response = json.loads(urllib2.urlopen(self.nexmo_url).read())
-        nexmo_response = json.loads('''
-            {
-                "message-count": "1",
-                "messages": [
-                    {
-                        "message-id": "0200000012F13752",
-                        "message-price": "0.01300000",
-                        "network": "29341",
-                        "remaining-balance": "1.43000000",
-                        "status": "0",
-                        "to": "0038651628141"
-                    }
-                ]
-            }
-            '''
-        )
+        nexmo_response = json.loads(urllib2.urlopen(self.nexmo_url).read())
         return nexmo_response
 
 # -------------- #
@@ -166,6 +150,9 @@ class Action:
         sms_to = app.entry_to.get()
         sms_txt = app.entry_txt.get(1.0, gui.END).strip()
 
+        sms_txt = sms_txt.encode('utf-8')
+        Log.info(sms_txt)
+
         # validate form data
         if not sms_from:
             msg_err = 'SMS sender cannot be empty'
@@ -176,9 +163,11 @@ class Action:
             
         if msg_err:
             msg.showinfo(title='Error', message=msg_err)
+            Log.info(msg_err)
             return
             
         # try to send
+        Log.info('Connecting to Nexmo service')
         try:
             response = Nexmo(sms_from, sms_to, sms_txt).send()
         except KeyError:
@@ -194,10 +183,19 @@ class Action:
             msg_err = 'Server response:\n%s' % str(response)
             msg.showinfo(title="Sending SMS failed", message=msg_err)
 
-        Config.contacts_dict[sms_to] = 'PLACEHOLDER'
+        
+        # if this is an already known contact
+        # we don't wanna save it again
+        if sms_to in Config.contacts_dict.values():
+            Log.info('Number %s already exists. Not saving again.' % sms_to)
+            return
+
+        # build a tmp name and reload contacts
+        tmp_name = 'ContactName_%d' % len(Config.contacts_dict)
+        Config.contacts_dict[tmp_name] = sms_to
+
         Action.contacts_save()
         Action.contacts_load()
-        #app.contacts.insert(gui.END, sms_to)
 
     @staticmethod
     def sms_clear():
@@ -232,8 +230,10 @@ class Action:
     def contacts_delete():
 
         selected = app.contacts.curselection()
-
+        if not selected:
+            return
         contact = app.contacts.get(selected)
+
         Log.info('Deleting contact %s' % contact)
         app.contacts.delete(selected)
         del Config.contacts_dict[contact]
@@ -251,9 +251,83 @@ class Action:
 
         Log.info('Selected %s' % contact)
         app.entry_to.delete(0, gui.END)
-        app.entry_to.insert(0, app.contacts.get(selected))
+        app.entry_to.insert(0, Config.contacts_dict[contact])
         
 
+    @staticmethod
+    def contacts_edit():
+
+        selected = app.contacts.curselection()
+        if not selected:
+            return
+        contact = app.contacts.get(selected)
+
+        num = Config.contacts_dict[contact]
+        edit = ContactsEditWindow(contact, num, app)
+        edit.title('Edit contact')
+
+
+# -------------------- #
+# Contacts edit window #
+# -------------------- #
+class ContactsEditWindow(gui.Toplevel):
+
+    def __init__(self, name, num, master=None):
+        gui.Toplevel.__init__(self, master)
+        self.name = name
+        self.num = num
+        self.widgets()
+
+    def save(self):
+        
+        new_name = self.edit_name.get()
+        new_num  = self.edit_num.get()
+        Log.info('Saving edited contact %s as %s' % (new_name, new_num))
+
+        del Config.contacts_dict[self.name]
+        Config.contacts_dict[new_name] = new_num
+        Action.contacts_save()
+        Action.contacts_load()
+        self.destroy()
+        
+        
+
+
+    def widgets(self):
+
+        # TOP FRAME
+        lf_top = gui.LabelFrame(self, text='Edit contact')
+        lf_top.pack(side=gui.TOP)
+
+        lbl_name = gui.Label(lf_top, text='Name:')
+        lbl_num  = gui.Label(lf_top, text='Number:')
+
+        edit_name = gui.Entry(lf_top)
+        edit_num  = gui.Entry(lf_top)
+
+        self.edit_name = edit_name
+        self.edit_num = edit_num
+
+        edit_name.insert(0, self.name)
+        edit_num.insert(0, self.num)
+
+        lbl_name.grid(row=0, column=0)
+        edit_name.grid(row=0, column=1)
+
+        lbl_num.grid(row=1, column=0)
+        edit_num.grid(row=1, column=1)
+
+        # BOTTOM FRAME
+        frm_bottom = gui.Frame(self)
+        frm_bottom.pack(side=gui.BOTTOM, fill=gui.X)
+
+        btn_save = gui.Button(frm_bottom, text='Save', command=self.save)
+        btn_cancel = gui.Button(frm_bottom, text='Cancel', command=self.destroy)
+
+        btn_save.pack(side=gui.LEFT, fill=gui.X, expand=True)
+        btn_cancel.pack(side=gui.RIGHT, fill=gui.X, expand=True)
+
+        
 # -------------------- #
 # Configuration Window #
 # -------------------- #
@@ -353,6 +427,9 @@ class MainWindow(gui.Frame):
         btn_del = gui.Button(lf_contacts, text="Delete", command=Action.contacts_delete)
         btn_del.pack(side=gui.RIGHT, fill=gui.BOTH, expand=1)
 
+        btn_edit = gui.Button(lf_contacts, text="Edit", command=Action.contacts_edit)
+        btn_edit.pack(side=gui.RIGHT, fill=gui.BOTH, expand=1)
+
         # sms: labelframe
         lf_sms = gui.LabelFrame(self, text="SMS")
         lf_sms.pack(side=gui.TOP, anchor=gui.NW, fill=gui.BOTH, expand=True, padx=5, pady=5)
@@ -399,6 +476,7 @@ class MainWindow(gui.Frame):
 # ---------- #
 # Main stuff # 
 # ---------- #
+os.umask(077)
 Log.info('tkNexmo starting')
 
 # init: screen
