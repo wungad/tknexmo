@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+import platform
 import json
 import urllib
 import urllib2
@@ -21,6 +22,7 @@ except ImportError:
 # --------------------- #
 class Config:
 
+    default_from = platform.node()
     credentials_file = 'credentials.db'
     credentials_dict = {}
 
@@ -440,6 +442,7 @@ class MainWindow(gui.Frame):
 
         entry_from = gui.Entry(lf_sms, width=11)
         entry_from.grid(row=0, column=1, padx=10, pady=5, sticky=gui.W)
+        entry_from.insert(0, Config.default_from)
         self.entry_from = entry_from
         
         # sms: to
@@ -479,10 +482,12 @@ class MainWindow(gui.Frame):
 os.umask(077)
 Log.info('tkNexmo starting')
 
+
 # init: screen
 root = gui.Tk()
 root.resizable(0, 0)
 root.title("Nexmo SMS")
+root.option_add('*Font', 'courier')
 
 # init: main window
 app = MainWindow(root)
@@ -491,6 +496,5 @@ app = MainWindow(root)
 Action.credentials_load()
 Action.contacts_load()
 
-# main: run
 app.mainloop()
 Log.info("tkNexmo exiting")
