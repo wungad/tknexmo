@@ -86,7 +86,8 @@ class Nexmo:
             'api_secret':   Config.credentials_dict['secret'],
             'from':         sms_from,
             'to':           sms_to,
-            'text':         sms_txt
+            'text':         sms_txt,
+            'type':         'unicode',
         })
 
         self.sms_to = sms_to
