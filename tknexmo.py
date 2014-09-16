@@ -58,7 +58,7 @@ class WindowUtil:
 # ------------- #
 class Log:
 
-    now = time.strftime('%Y-%m-%d %H:%M:S')
+    now = time.strftime('%Y-%m-%d %H:%M:%S')
 
     @staticmethod
     def info(msg):
